@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project YouTube — Focused Feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0c0c0c; --surface:#141414; --surface-2:#1c1c1c; --border:#272727;
+  --text:#e8e6e1; --text-soft:#6b6b6b; --text-mid:#a0a0a0;
+  --red:#ff4444; --radius:10px; --ease:cubic-bezier(.4,0,.2,1);
+  --serif:'Instrument Serif',Georgia,serif; --sans:'Geist',system-ui,sans-serif;
+}
+html { scroll-behavior:smooth; }
+body { font-family:var(--sans); background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+.screen { display:none; min-height:100vh; }
+.screen.active { display:block; }
+
+/* ── Setup ── */
+#screen-setup { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 24px; min-height:100vh; position:relative; overflow:hidden; }
+#screen-setup::before { content:''; position:absolute; width:600px; height:600px; background:radial-gradient(circle,rgba(255,68,68,0.06) 0%,transparent 70%); top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
+.setup-inner { max-width:440px; width:100%; position:relative; z-index:1; }
+.setup-logo { display:flex; align-items:center; gap:10px; margin-bottom:48px; }
+.logo-mark { width:32px; height:32px; background:var(--red); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+.logo-mark svg { width:14px; height:14px; fill:white; }
+.logo-text { font-family:var(--serif); font-size:18px; color:var(--text); }
+h1 { font-family:var(--serif); font-size:clamp(32px,5vw,44px); line-height:1.15; letter-spacing:-0.5px; margin-bottom:14px; }
+h1 em { font-style:italic; color:var(--text-soft); }
+.setup-sub { font-size:14px; color:var(--text-soft); line-height:1.6; margin-bottom:40px; }
+.setup-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:12px; }
+.step-label { font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-soft); margin-bottom:14px; }
+.btn { width:100%; padding:12px 20px; border-radius:8px; border:none; font-family:var(--sans); font-size:14px; font-weight:500; cursor:pointer; transition:all 150ms var(--ease); display:flex; align-items:center; justify-content:center; gap:10px; }
+.btn-google { background:white; color:#1a1a1a; }
+.btn-google:hover { background:#f0f0f0; }
+.btn-google svg { width:18px; height:18px; flex-shrink:0; }
+.btn-primary { background:var(--text); color:var(--bg); margin-top:4px; }
+.btn-primary:hover:not(:disabled) { background:#d0cec9; }
+.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+.input-field { width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:11px 14px; font-family:var(--sans); font-size:13px; color:var(--text); outline:none; transition:border-color 150ms; margin-bottom:10px; }
+.input-field::placeholder { color:var(--text-soft); }
+.input-field:focus { border-color:#444; }
+.input-hint { font-size:11px; color:var(--text-soft); line-height:1.5; }
+.input-hint a { color:var(--text-mid); }
+.signed-in-row { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface-2); border-radius:8px; border:1px solid var(--border); }
+.signin-avatar { width:28px; height:28px; border-radius:50%; background:var(--border); overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-soft); }
+.signin-avatar img { width:100%; height:100%; object-fit:cover; }
+.signin-name { font-size:13px; color:var(--text); flex:1; }
+.signin-check { color:#4ade80; font-size:16px; }
+.status-msg { margin-top:14px; font-size:12px; text-align:center; padding:10px 14px; border-radius:6px; display:none; line-height:1.5; }
+.status-msg.error { display:block; background:rgba(255,68,68,0.1); color:#ff8080; border:1px solid rgba(255,68,68,0.2); }
+.status-msg.info { display:block; color:var(--text-soft); background:var(--surface); }
+.debug-box { margin-top:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:10px 14px; font-size:11px; color:var(--text-soft); font-family:monospace; display:none; word-break:break-all; }
+
+/* ── Loading ── */
+#screen-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:20px; }
+.ring { width:40px; height:40px; border:2px solid var(--border); border-top-color:var(--text); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text { font-size:13px; color:var(--text-soft); text-align:center; line-height:1.8; }
+
+/* ── Gallery ── */
+#screen-gallery { background:var(--bg); }
+.topbar { background:var(--bg); border-bottom:1px solid var(--border); padding:0 32px; display:flex; align-items:center; gap:16px; position:sticky; top:0; z-index:100; height:56px; }
+.topbar-logo { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.topbar-logo-mark { width:24px; height:24px; background:var(--red); border-radius:4px; display:flex; align-items:center; justify-content:center; }
+.topbar-logo-mark svg { width:10px; height:10px; fill:white; }
+.topbar-logo-name { font-family:var(--serif); font-size:15px; color:var(--text); }
+.tabs-wrap { display:flex; align-items:center; gap:2px; overflow-x:auto; flex:1; scrollbar-width:none; }
+.tabs-wrap::-webkit-scrollbar { display:none; }
+.tab { padding:6px 14px; border-radius:20px; border:none; background:none; font-family:var(--sans); font-size:12px; font-weight:500; color:var(--text-soft); cursor:pointer; white-space:nowrap; transition:all 150ms var(--ease); }
+.tab:hover { color:var(--text); background:var(--surface); }
+.tab.active { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+.tab-count { font-size:10px; color:var(--text-soft); background:var(--surface); padding:1px 6px; border-radius:10px; margin-left:4px; }
+.tab.active .tab-count { background:var(--border); }
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.refresh-btn { background:none; border:1px solid var(--border); color:var(--text-soft); font-family:var(--sans); font-size:11px; padding:4px 12px; border-radius:6px; cursor:pointer; transition:all 150ms; }
+.refresh-btn:hover { color:var(--text); border-color:#444; }
+.user-avatar { width:28px; height:28px; border-radius:50%; overflow:hidden; background:var(--border); }
+.user-avatar img { width:100%; height:100%; object-fit:cover; }
+.gallery-body { max-width:1200px; margin:0 auto; padding:32px 32px 80px; }
+.category-view { display:none; }
+.category-view.active { display:block; }
+.category-header { margin-bottom:24px; }
+.category-title { font-family:var(--serif); font-size:28px; color:var(--text); letter-spacing:-0.3px; margin-bottom:4px; }
+.category-subtitle { font-size:12px; color:var(--text-soft); }
+.video-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
+.video-card { cursor:pointer; border-radius:var(--radius); overflow:hidden; background:var(--surface); border:1px solid var(--border); transition:transform 200ms var(--ease),border-color 200ms var(--ease); }
+.video-card:hover { transform:translateY(-2px); border-color:#333; }
+.vc-thumb { aspect-ratio:16/9; overflow:hidden; background:var(--surface-2); }
+.vc-thumb img { width:100%; height:100%; object-fit:cover; display:block; transition:transform 300ms var(--ease); }
+.video-card:hover .vc-thumb img { transform:scale(1.04); }
+.vc-body { padding:12px 14px 14px; }
+.vc-channel { font-size:10px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-soft); margin-bottom:5px; }
+.vc-title { font-size:13px; font-weight:500; line-height:1.45; color:var(--text); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+/* ── Video Screen ── */
+#screen-video { background:var(--bg); }
+.video-topbar { background:var(--bg); border-bottom:1px solid var(--border); padding:0 32px; height:52px; display:flex; align-items:center; gap:16px; position:sticky; top:0; z-index:100; }
+.back-btn { background:none; border:1px solid var(--border); color:var(--text-soft); font-family:var(--sans); font-size:12px; padding:5px 12px; border-radius:6px; cursor:pointer; transition:all 150ms; }
+.back-btn:hover { color:var(--text); border-color:#444; }
+.video-topbar-title { font-size:13px; color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.video-layout { display:grid; grid-template-columns:1fr 400px; height:calc(100vh - 52px); }
+.video-left { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow-y:auto; }
+.video-embed-wrap { background:#000; aspect-ratio:16/9; width:100%; flex-shrink:0; }
+.video-embed-wrap iframe { width:100%; height:100%; border:none; display:block; }
+.video-info-panel { padding:20px 24px; }
+.vi-channel { font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-soft); margin-bottom:8px; }
+.vi-title { font-family:var(--serif); font-size:20px; line-height:1.3; color:var(--text); margin-bottom:14px; }
+.vi-yt-link { font-size:12px; color:var(--text-soft); text-decoration:none; border-bottom:1px solid var(--border); padding-bottom:1px; transition:color 150ms; }
+.vi-yt-link:hover { color:var(--text); }
+.video-right { display:flex; flex-direction:column; overflow:hidden; }
+.summary-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.summary-header-title { font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--text-soft); }
+.summarise-btn { background:var(--text); color:var(--bg); border:none; padding:7px 16px; border-radius:6px; font-family:var(--sans); font-size:12px; font-weight:600; cursor:pointer; transition:all 150ms; }
+.summarise-btn:hover:not(:disabled) { background:#d0cec9; }
+.summarise-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.summary-body { flex:1; overflow-y:auto; padding:20px; }
+.summary-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; text-align:center; padding:40px 20px; }
+.summary-empty-icon { width:48px; height:48px; border-radius:50%; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:20px; }
+.summary-empty-text { font-size:13px; color:var(--text-soft); line-height:1.6; }
+.summary-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:14px; }
+.summary-loading .ring { width:32px; height:32px; border-width:2px; }
+.summary-loading-text { font-size:12px; color:var(--text-soft); }
+.summary-content { font-size:14px; line-height:1.8; color:#c8c5bf; font-family:var(--serif); font-weight:300; }
+.summary-content p { margin-bottom:12px; }
+.summary-content strong { color:var(--text); font-weight:600; font-family:var(--sans); font-size:13px; }
+.ts-chip { display:inline-flex; align-items:center; gap:4px; background:var(--surface-2); border:1px solid var(--border); color:var(--text-mid); font-family:var(--sans); font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; cursor:pointer; transition:all 150ms; vertical-align:middle; margin:0 2px; }
+.ts-chip:hover { background:var(--border); color:var(--text); }
+.ts-chip::before { content:'▶'; font-size:8px; }
+.summary-error { background:rgba(255,68,68,0.08); border:1px solid rgba(255,68,68,0.2); border-radius:8px; padding:14px 16px; font-size:13px; color:#ff8080; line-height:1.6; }
+.summary-error strong { display:block; margin-bottom:4px; color:var(--red); }
+.retry-link { color:var(--red); cursor:pointer; text-decoration:underline; }
+
+@media(max-width:900px) {
+  .video-layout { grid-template-columns:1fr; height:auto; }
+  .video-left { border-right:none; border-bottom:1px solid var(--border); }
+  .video-right { height:70vh; }
+  .topbar,.video-topbar { padding:0 16px; }
+  .gallery-body { padding:24px 16px 60px; }
+}
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="screen-setup" class="screen active">
+  <div class="setup-inner">
+    <div class="setup-logo">
+      <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+      <span class="logo-text">Project YouTube</span>
+    </div>
+    <h1>Your feed,<br><em>your focus.</em></h1>
+    <p class="setup-sub">Your "Must Watch Again" playlist — organised by mood. No algorithm, no distraction.</p>
+
+    <div class="setup-card">
+      <div class="step-label">Step 1 — Connect YouTube</div>
+      <div id="signin-area">
+        <button class="btn btn-google" onclick="signInWithGoogle()">
+          <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Sign in with Google
+        </button>
+      </div>
+    </div>
+
+    <div class="setup-card">
+      <div class="step-label">Step 2 — Gemini API Key (for summaries)</div>
+      <input type="password" class="input-field" id="gemini-key-input" placeholder="AIza..." autocomplete="off">
+      <p class="input-hint">Get a free key at <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> → Create API Key. Stored only in your browser.</p>
+    </div>
+
+    <button class="btn btn-primary" id="start-btn" onclick="startApp()" disabled>
+      Load my playlist →
+    </button>
+
+    <div class="status-msg" id="status-msg"></div>
+    <div class="debug-box" id="debug-box"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="screen-loading" class="screen">
+  <div class="ring"></div>
+  <div class="loading-text" id="loading-text">Loading…</div>
+</div>
+
+<!-- GALLERY -->
+<div id="screen-gallery" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-logo-mark"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+      <span class="topbar-logo-name">Project YouTube</span>
+    </div>
+    <div class="tabs-wrap" id="tabs-wrap"></div>
+    <div class="topbar-right">
+      <button class="refresh-btn" onclick="refreshPlaylist()">↻ Refresh</button>
+      <div id="topbar-user"></div>
+    </div>
+  </div>
+  <div class="gallery-body" id="gallery-body"></div>
+</div>
+
+<!-- VIDEO -->
+<div id="screen-video" class="screen">
+  <div class="video-topbar">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <span class="video-topbar-title" id="vt-title"></span>
+  </div>
+  <div class="video-layout">
+    <div class="video-left">
+      <div class="video-embed-wrap">
+        <iframe id="yt-player" src="" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      </div>
+      <div class="video-info-panel">
+        <div class="vi-channel" id="vi-channel"></div>
+        <div class="vi-title" id="vi-title"></div>
+        <a id="vi-yt-link" href="#" target="_blank" class="vi-yt-link">Watch on YouTube ↗</a>
+      </div>
+    </div>
+    <div class="video-right">
+      <div class="summary-header">
+        <span class="summary-header-title">Summary</span>
+        <button class="summarise-btn" id="summarise-btn" onclick="summariseVideo()">Summarise</button>
+      </div>
+      <div class="summary-body" id="summary-body">
+        <div class="summary-empty">
+          <div class="summary-empty-icon">✦</div>
+          <div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── IMPORTANT: Replace with your Web application OAuth Client ID ──────────
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
+// ── Playlist ID — your "Must Watch Again" playlist ────────────────────────
+const PLAYLIST_ID = 'PLdgObwAmok7kzkx4DDdG5Y6JtNV9Z9NVY';
+// ─────────────────────────────────────────────────────────────────────────
+
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+const SCOPES       = 'https://www.googleapis.com/auth/youtube.readonly';
+
+let accessToken  = null;
+let userProfile  = null;
+let currentVideo = null;
+let summaryCache = {};
+
+// ── Screens ───────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className   = 'status-msg ' + (type || 'error');
+}
+
+function showDebug(msg) {
+  const el = document.getElementById('debug-box');
+  el.style.display = 'block';
+  el.textContent   = msg;
+}
+
+function setLoading(msg) {
+  document.getElementById('loading-text').innerHTML = msg;
+}
+
+// ── Token ─────────────────────────────────────────────────────────────────
+function saveToken(token) {
+  accessToken = token;
+  localStorage.setItem('yt_token', token);
+  localStorage.setItem('yt_token_time', Date.now().toString());
+}
+
+function loadToken() {
+  const token = localStorage.getItem('yt_token');
+  const time  = parseInt(localStorage.getItem('yt_token_time') || '0');
+  if (token && Date.now() - time < 3500000) {
+    accessToken = token;
+    return true;
+  }
+  localStorage.removeItem('yt_token');
+  localStorage.removeItem('yt_token_time');
+  return false;
+}
+
+// ── OAuth ─────────────────────────────────────────────────────────────────
+function signInWithGoogle() {
+  const params = new URLSearchParams({
+    client_id:              GOOGLE_CLIENT_ID,
+    redirect_uri:           REDIRECT_URI,
+    response_type:          'token',
+    scope:                  SCOPES,
+    prompt:                 'select_account',
+    include_granted_scopes: 'true',
+  });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+(function init() {
+  // Check for OAuth token in URL hash first
+  const hash   = window.location.hash;
+  const params = new URLSearchParams(hash.substring(1));
+  const token  = params.get('access_token');
+
+  if (token) {
+    saveToken(token);
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setupSignedInState(token);
+    return;
+  }
+
+  // Check for saved token
+  if (loadToken()) {
+    setupSignedInState(accessToken);
+    return;
+  }
+
+  // No token — fresh setup
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
+  document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
+})();
+
+function setupSignedInState(token) {
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
+  document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
+
+  document.getElementById('signin-area').innerHTML = `
+    <div class="signed-in-row">
+      <div class="signin-avatar">✓</div>
+      <span class="signin-name">Connected to YouTube</span>
+      <span class="signin-check">✓</span>
+    </div>`;
+
+  checkStartReady();
+
+  // Try profile in background
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer ' + token }
+  }).then(r => r.ok ? r.json() : null).then(p => {
+    if (!p) return;
+    userProfile = p;
+    document.getElementById('signin-area').innerHTML = `
+      <div class="signed-in-row">
+        <div class="signin-avatar">${p.picture ? `<img src="${p.picture}" alt="">` : '✓'}</div>
+        <span class="signin-name">${p.name || 'Connected'}</span>
+        <span class="signin-check">✓</span>
+      </div>`;
+  }).catch(() => {});
+}
+
+function checkStartReady() {
+  const key = document.getElementById('gemini-key-input').value.trim();
+  document.getElementById('start-btn').disabled = !(accessToken && key.length > 10);
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────
+async function startApp() {
+  const key = document.getElementById('gemini-key-input').value.trim();
+  if (!key || !accessToken) {
+    showStatus('Please sign in with Google and enter your Gemini API key.', 'error');
+    return;
+  }
+  localStorage.setItem('gemini_api_key', key);
+  showScreen('loading');
+  await loadPlaylist();
+}
+
+async function refreshPlaylist() {
+  showScreen('loading');
+  await loadPlaylist();
+}
+
+async function loadPlaylist() {
+  try {
+    setLoading('Fetching your "Must Watch Again" playlist…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">Getting last 25 videos</span>');
+
+    const videos = await fetchPlaylist();
+
+    if (!videos.length) {
+      showScreen('setup');
+      showStatus('No videos found in your "Must Watch Again" playlist. Add some videos to it on YouTube first.', 'error');
+      return;
+    }
+
+    const key = localStorage.getItem('gemini_api_key');
+    setLoading(`Got ${videos.length} videos. Categorising with Gemini…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">This takes about 15 seconds</span>`);
+
+    const categorised = await categoriseVideos(videos, key);
+    buildGallery(categorised, videos);
+    showScreen('gallery');
+
+  } catch(err) {
+    showScreen('setup');
+    showStatus('Error: ' + err.message, 'error');
+    showDebug('Debug: ' + err.message);
+  }
+}
+
+// ── Fetch Playlist ────────────────────────────────────────────────────────
+async function fetchPlaylist() {
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${PLAYLIST_ID}&maxResults=25`,
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    const msg = data.error?.message || `YouTube API error ${res.status}`;
+    // Token expired — clear and ask to re-login
+    if (res.status === 401) {
+      localStorage.removeItem('yt_token');
+      localStorage.removeItem('yt_token_time');
+      throw new Error('Session expired. Please sign in again.');
+    }
+    throw new Error(msg);
+  }
+
+  const videos = [];
+  for (const item of (data.items || [])) {
+    const s     = item.snippet;
+    const vidId = s?.resourceId?.videoId;
+    if (!vidId || vidId === 'undefined') continue;
+
+    const thumbs = s.thumbnails || {};
+    const thumb  = (thumbs.maxres || thumbs.high || thumbs.medium || thumbs.default || {}).url
+                || `https://img.youtube.com/vi/${vidId}/hqdefault.jpg`;
+
+    videos.push({
+      id:        vidId,
+      title:     (s.title || 'Untitled').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"'),
+      channel:   s.videoOwnerChannelTitle || 'Unknown Channel',
+      thumbnail: thumb,
+      url:       `https://www.youtube.com/watch?v=${vidId}`,
+    });
+  }
+  return videos;
+}
+
+// ── Categorise ────────────────────────────────────────────────────────────
+async function categoriseVideos(videos, geminiKey) {
+  const list   = videos.map((v, i) => `${i+1}. "${v.title}" by ${v.channel}`).join('\n');
+  const prompt = `Organise this YouTube playlist into 4-6 natural focus categories.
+
+Videos:
+${list}
+
+Rules:
+- Derive categories from what's actually in the list — don't use preset ones
+- Assign each video to exactly one category
+- Videos that don't fit anywhere go in "Random"
+- Reply ONLY with valid JSON, no markdown, no extra text
+
+Format:
+{"categories":["Cat1","Cat2","Random"],"assignments":{"1":"Cat1","2":"Cat2"}}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+    {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ contents:[{ parts:[{ text: prompt }] }], generationConfig:{ temperature:0.1 } })
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error('Gemini error: ' + (err.error?.message || res.status));
+  }
+
+  const data = await res.json();
+  let   raw  = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+  raw = raw.replace(/```json|```/g,'').trim();
+
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch(e) { throw new Error('Could not parse Gemini response. Please try again.'); }
+
+  const result = {};
+  for (const cat of (parsed.categories || [])) result[cat] = [];
+  for (let i = 0; i < videos.length; i++) {
+    const cat = parsed.assignments?.[String(i+1)] || 'Random';
+    if (!result[cat]) result[cat] = [];
+    result[cat].push(videos[i]);
+  }
+  Object.keys(result).forEach(k => { if (!result[k].length) delete result[k]; });
+  return result;
+}
+
+// ── Gallery ───────────────────────────────────────────────────────────────
+function buildGallery(categorised, allVideos) {
+  if (userProfile?.picture) {
+    document.getElementById('topbar-user').innerHTML =
+      `<div class="user-avatar"><img src="${userProfile.picture}" alt=""></div>`;
+  }
+
+  let tabsHTML  = `<button class="tab active" data-cat="all" onclick="switchTab('all')">All<span class="tab-count">${allVideos.length}</span></button>`;
+  let viewsHTML = `<div class="category-view active" id="cat-all">
+    <div class="category-header">
+      <div class="category-title">Must Watch Again</div>
+      <div class="category-subtitle">${allVideos.length} videos · categorised by Gemini</div>
+    </div>
+    <div class="video-grid">${allVideos.map(videoCardHTML).join('')}</div>
+  </div>`;
+
+  for (const [cat, videos] of Object.entries(categorised)) {
+    const slug = slugify(cat);
+    tabsHTML  += `<button class="tab" data-cat="${slug}" onclick="switchTab('${slug}')">${cat}<span class="tab-count">${videos.length}</span></button>`;
+    viewsHTML += `<div class="category-view" id="cat-${slug}">
+      <div class="category-header">
+        <div class="category-title">${cat}</div>
+        <div class="category-subtitle">${videos.length} video${videos.length!==1?'s':''}</div>
+      </div>
+      <div class="video-grid">${videos.map(videoCardHTML).join('')}</div>
+    </div>`;
+  }
+
+  document.getElementById('tabs-wrap').innerHTML    = tabsHTML;
+  document.getElementById('gallery-body').innerHTML = viewsHTML;
+}
+
+function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+
+function videoCardHTML(v) {
+  const safe = encodeURIComponent(JSON.stringify(v));
+  return `<div class="video-card" onclick="openVideo('${safe}')">
+    <div class="vc-thumb"><img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.src='https://img.youtube.com/vi/${v.id}/hqdefault.jpg'"></div>
+    <div class="vc-body">
+      <div class="vc-channel">${v.channel}</div>
+      <div class="vc-title">${v.title}</div>
+    </div>
+  </div>`;
+}
+
+function switchTab(cat) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.category-view').forEach(v => v.classList.remove('active'));
+  document.querySelector(`[data-cat="${cat}"]`).classList.add('active');
+  document.getElementById('cat-' + cat).classList.add('active');
+}
+
+// ── Video Screen ──────────────────────────────────────────────────────────
+function openVideo(vStr) {
+  const v = JSON.parse(decodeURIComponent(vStr));
+  currentVideo = v;
+  document.getElementById('vt-title').textContent   = v.title;
+  document.getElementById('vi-channel').textContent = v.channel;
+  document.getElementById('vi-title').textContent   = v.title;
+  document.getElementById('vi-yt-link').href        = v.url;
+  document.getElementById('yt-player').src          = `https://www.youtube.com/embed/${v.id}?enablejsapi=1&rel=0`;
+
+  const btn  = document.getElementById('summarise-btn');
+  const body = document.getElementById('summary-body');
+
+  if (summaryCache[v.id]) {
+    renderSummary(summaryCache[v.id]);
+    btn.disabled = true;
+  } else {
+    btn.disabled = false;
+    body.innerHTML = `<div class="summary-empty"><div class="summary-empty-icon">✦</div><div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video.</div></div>`;
+  }
+  showScreen('video');
+  window.scrollTo(0,0);
+}
+
+function goBack() {
+  document.getElementById('yt-player').src = '';
+  showScreen('gallery');
+}
+
+// ── Summarise ─────────────────────────────────────────────────────────────
+async function summariseVideo() {
+  if (!currentVideo) return;
+  const btn  = document.getElementById('summarise-btn');
+  const body = document.getElementById('summary-body');
+  const key  = localStorage.getItem('gemini_api_key');
+  btn.disabled = true;
+  body.innerHTML = `<div class="summary-loading"><div class="ring"></div><div class="summary-loading-text">Reading the video…</div></div>`;
+
+  const prompt = `Give me the summary of this video. Make sure all the important content is captured in depth, and all the filler conversations or random stuff is removed from it. Can you do some genuine shortlisting to just share the relevant aspects in the similar tone and language of the anchor, making it more concise. Include timestamps for key moments in this format: [2:34]`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{ parts:[
+          { file_data:{ mime_type:'video/youtube', file_uri:currentVideo.url } },
+          { text: prompt }
+        ]}]}) }
+    );
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || res.status); }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No summary returned.';
+    summaryCache[currentVideo.id] = text;
+    renderSummary(text);
+  } catch(err) {
+    body.innerHTML = `<div class="summary-error"><strong>Could not generate summary</strong>${err.message}<br><br><span class="retry-link" onclick="document.getElementById('summarise-btn').disabled=false;summariseVideo()">Try again →</span></div>`;
+    btn.disabled = false;
+  }
+}
+
+function renderSummary(text) {
+  const withTs = text.replace(/\[(\d+:\d{2}(?::\d{2})?)\]/g,
+    (m,ts) => `<span class="ts-chip" onclick="seekTo(${tsToSecs(ts)})">${ts}</span>`);
+  const lines = withTs.split('\n');
+  let html = '<div class="summary-content">', inList = false;
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) { if (inList) { html += '</ul>'; inList = false; } continue; }
+    if (/^\*\*(.+)\*\*$/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p><strong>${line.replace(/\*\*/g,'')}</strong></p>`;
+    } else if (/^[\-\*•]/.test(line)) {
+      if (!inList) { html += '<ul style="padding-left:16px;margin:8px 0">'; inList = true; }
+      html += `<li style="margin-bottom:6px">${line.replace(/^[\-\*•]\s*/,'').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')}</li>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${line.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  html += '</div>';
+  document.getElementById('summary-body').innerHTML = html;
+}
+
+function tsToSecs(ts) { return ts.split(':').map(Number).reverse().reduce((a,v,i) => a + v * Math.pow(60,i), 0); }
+
+function seekTo(s) {
+  document.getElementById('yt-player').contentWindow?.postMessage(
+    JSON.stringify({event:'command',func:'seekTo',args:[s,true]}), '*'
+  );
+  document.getElementById('yt-player').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape' && document.getElementById('screen-video').classList.contains('active')) goBack();
+});
+</script>
+</body>
+</html>
