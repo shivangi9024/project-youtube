@@ -16,20 +16,12 @@
 }
 html { scroll-behavior:smooth; }
 body { font-family:var(--sans); background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
-
 .screen { display:none; min-height:100vh; }
 .screen.active { display:block; }
 
 /* ── Setup ── */
-#screen-setup {
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  padding:40px 24px; min-height:100vh; position:relative; overflow:hidden;
-}
-#screen-setup::before {
-  content:''; position:absolute; width:600px; height:600px;
-  background:radial-gradient(circle,rgba(255,68,68,0.06) 0%,transparent 70%);
-  top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none;
-}
+#screen-setup { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 24px; min-height:100vh; position:relative; overflow:hidden; }
+#screen-setup::before { content:''; position:absolute; width:600px; height:600px; background:radial-gradient(circle,rgba(255,68,68,0.06) 0%,transparent 70%); top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none; }
 .setup-inner { max-width:440px; width:100%; position:relative; z-index:1; }
 .setup-logo { display:flex; align-items:center; gap:10px; margin-bottom:48px; }
 .logo-mark { width:32px; height:32px; background:var(--red); border-radius:6px; display:flex; align-items:center; justify-content:center; }
@@ -53,20 +45,20 @@ h1 em { font-style:italic; color:var(--text-soft); }
 .input-hint { font-size:11px; color:var(--text-soft); line-height:1.5; }
 .input-hint a { color:var(--text-mid); }
 .signed-in-row { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface-2); border-radius:8px; border:1px solid var(--border); }
-.signin-avatar { width:28px; height:28px; border-radius:50%; background:var(--border); overflow:hidden; flex-shrink:0; }
+.signin-avatar { width:28px; height:28px; border-radius:50%; background:var(--border); overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-soft); }
 .signin-avatar img { width:100%; height:100%; object-fit:cover; }
 .signin-name { font-size:13px; color:var(--text); flex:1; }
 .signin-check { color:#4ade80; font-size:16px; }
-.status-msg { margin-top:14px; font-size:12px; text-align:center; min-height:18px; padding:8px 12px; border-radius:6px; display:none; }
+.status-msg { margin-top:14px; font-size:12px; text-align:center; padding:10px 14px; border-radius:6px; display:none; line-height:1.5; }
 .status-msg.error { display:block; background:rgba(255,68,68,0.1); color:#ff8080; border:1px solid rgba(255,68,68,0.2); }
-.status-msg.info { display:block; color:var(--text-soft); }
+.status-msg.info { display:block; color:var(--text-soft); background:var(--surface); }
+.debug-box { margin-top:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:10px 14px; font-size:11px; color:var(--text-soft); font-family:monospace; display:none; word-break:break-all; }
 
 /* ── Loading ── */
 #screen-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; gap:20px; }
 .ring { width:40px; height:40px; border:2px solid var(--border); border-top-color:var(--text); border-radius:50%; animation:spin .8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
-.loading-text { font-size:13px; color:var(--text-soft); text-align:center; line-height:1.6; }
-.loading-sub { font-size:11px; color:#444; margin-top:4px; }
+.loading-text { font-size:13px; color:var(--text-soft); text-align:center; line-height:1.8; }
 
 /* ── Gallery ── */
 #screen-gallery { background:var(--bg); }
@@ -181,16 +173,14 @@ h1 em { font-style:italic; color:var(--text-soft); }
     </button>
 
     <div class="status-msg" id="status-msg"></div>
+    <div class="debug-box" id="debug-box"></div>
   </div>
 </div>
 
 <!-- LOADING -->
 <div id="screen-loading" class="screen">
   <div class="ring"></div>
-  <div class="loading-text" id="loading-text">
-    Fetching your Watch Later playlist…
-    <div class="loading-sub" id="loading-sub"></div>
-  </div>
+  <div class="loading-text" id="loading-text">Loading…</div>
 </div>
 
 <!-- GALLERY -->
@@ -239,18 +229,19 @@ h1 em { font-style:italic; color:var(--text-soft); }
 </div>
 
 <script>
-// ── REPLACE THIS with your actual Web application OAuth Client ID ──────────
-const GOOGLE_CLIENT_ID = '600597148935-9fr1n3j9om32j4ui72k2iaiciiu4oafk.apps.googleusercontent.com';
-// ─────────────────────────────────────────────────────────────────────────────
+// ── CONFIG — replace with your Web application Client ID ─────────────────
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
+// ─────────────────────────────────────────────────────────────────────────
 
-const SCOPES = 'https://www.googleapis.com/auth/youtube';
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+const SCOPES       = 'https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/userinfo.profile';
 
 let accessToken  = null;
 let userProfile  = null;
 let currentVideo = null;
 let summaryCache = {};
 
-// ── Screens ───────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
@@ -259,60 +250,110 @@ function showScreen(id) {
 function showStatus(msg, type) {
   const el = document.getElementById('status-msg');
   el.textContent = msg;
-  el.className = 'status-msg ' + type;
+  el.className   = 'status-msg ' + (type || 'error');
+}
+
+function showDebug(msg) {
+  const el = document.getElementById('debug-box');
+  el.style.display = 'block';
+  el.textContent   = msg;
+}
+
+function setLoading(msg) {
+  document.getElementById('loading-text').innerHTML = msg;
+}
+
+// ── Token handling ────────────────────────────────────────────────────────
+function saveToken(token) {
+  accessToken = token;
+  localStorage.setItem('yt_token', token);
+  localStorage.setItem('yt_token_time', Date.now().toString());
+}
+
+function loadToken() {
+  const token = localStorage.getItem('yt_token');
+  const time  = parseInt(localStorage.getItem('yt_token_time') || '0');
+  // Tokens expire after 1 hour (3600000ms)
+  if (token && Date.now() - time < 3500000) {
+    accessToken = token;
+    return true;
+  }
+  localStorage.removeItem('yt_token');
+  localStorage.removeItem('yt_token_time');
+  return false;
 }
 
 // ── OAuth ─────────────────────────────────────────────────────────────────
 function signInWithGoogle() {
   const params = new URLSearchParams({
     client_id:     GOOGLE_CLIENT_ID,
-    redirect_uri:  window.location.origin + window.location.pathname,
+    redirect_uri:  REDIRECT_URI,
     response_type: 'token',
     scope:         SCOPES,
     prompt:        'select_account',
+    include_granted_scopes: 'true',
   });
   window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
 
-function handleOAuthCallback() {
-  const hash   = window.location.hash.substring(1);
-  const params = new URLSearchParams(hash);
+// ── Init — runs immediately when page loads ───────────────────────────────
+(function init() {
+  // 1. Check for OAuth token in URL hash FIRST (before anything clears it)
+  const hash   = window.location.hash;
+  const params = new URLSearchParams(hash.substring(1));
   const token  = params.get('access_token');
-  if (!token) return false;
-  accessToken = token;
-  sessionStorage.setItem('yt_access_token', token);
-  window.history.replaceState({}, document.title, window.location.pathname);
-  return true;
-}
 
-async function fetchUserProfile() {
-  try {
-    const res  = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: 'Bearer ' + accessToken }
-    });
-    if (!res.ok) throw new Error('Profile fetch failed');
-    userProfile = await res.json();
-
-    document.getElementById('signin-area').innerHTML = `
-      <div class="signed-in-row">
-        <div class="signin-avatar">
-          ${userProfile.picture ? `<img src="${userProfile.picture}" alt="">` : ''}
-        </div>
-        <span class="signin-name">${userProfile.name || userProfile.email || 'Signed in'}</span>
-        <span class="signin-check">✓</span>
-      </div>`;
-
-    checkStartReady();
-  } catch(e) {
-    // Even if profile fails, token is valid — still allow proceeding
-    document.getElementById('signin-area').innerHTML = `
-      <div class="signed-in-row">
-        <div class="signin-avatar"></div>
-        <span class="signin-name">Signed in ✓</span>
-        <span class="signin-check">✓</span>
-      </div>`;
-    checkStartReady();
+  if (token) {
+    saveToken(token);
+    // Clean URL without reloading
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setupSignedInState(token);
+    return;
   }
+
+  // 2. Check for saved token
+  if (loadToken()) {
+    setupSignedInState(accessToken);
+    return;
+  }
+
+  // 3. No token — show sign in button, restore saved key
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
+  document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
+})();
+
+function setupSignedInState(token) {
+  // Restore saved Gemini key
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
+
+  document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
+
+  // Show signed-in UI without profile pic (avoid the 401 on userinfo)
+  document.getElementById('signin-area').innerHTML = `
+    <div class="signed-in-row">
+      <div class="signin-avatar">✓</div>
+      <span class="signin-name">Connected to YouTube</span>
+      <span class="signin-check">✓</span>
+    </div>`;
+
+  checkStartReady();
+
+  // Try to get profile in background (non-blocking)
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer ' + token }
+  }).then(r => r.ok ? r.json() : null).then(profile => {
+    if (profile && profile.name) {
+      userProfile = profile;
+      document.getElementById('signin-area').innerHTML = `
+        <div class="signed-in-row">
+          <div class="signin-avatar">${profile.picture ? `<img src="${profile.picture}" alt="">` : '✓'}</div>
+          <span class="signin-name">${profile.name}</span>
+          <span class="signin-check">✓</span>
+        </div>`;
+    }
+  }).catch(() => {});
 }
 
 function checkStartReady() {
@@ -320,30 +361,7 @@ function checkStartReady() {
   document.getElementById('start-btn').disabled = !(accessToken && key.length > 10);
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  // Restore saved key
-  const savedKey = localStorage.getItem('gemini_api_key');
-  if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
-
-  document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
-
-  // Restore token from session
-  const savedToken = sessionStorage.getItem('yt_access_token');
-  if (savedToken) {
-    accessToken = savedToken;
-    fetchUserProfile();
-  }
-
-  // Handle OAuth redirect
-  if (window.location.hash.includes('access_token')) {
-    if (handleOAuthCallback()) {
-      fetchUserProfile();
-    }
-  }
-});
-
-// ── Start ─────────────────────────────────────────────────────────────────
+// ── Start App ─────────────────────────────────────────────────────────────
 async function startApp() {
   const key = document.getElementById('gemini-key-input').value.trim();
   if (!key || !accessToken) {
@@ -355,47 +373,44 @@ async function startApp() {
   showScreen('loading');
 
   try {
-    setLoading('Fetching your Watch Later playlist…', 'Getting last 25 videos');
+    setLoading('Fetching your Watch Later playlist…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">Getting last 25 videos</span>');
+
     const videos = await fetchWatchLater();
 
     if (!videos.length) {
       showScreen('setup');
-      showStatus('No videos found in your Watch Later playlist. Add some on YouTube first.', 'error');
+      showStatus('No videos found in Watch Later. Make sure your Watch Later playlist has videos on YouTube.', 'error');
+      showDebug('Token: ' + (accessToken ? accessToken.substring(0,20) + '...' : 'none'));
       return;
     }
 
-    setLoading(`Got ${videos.length} videos. Categorising with Gemini…`, 'This takes about 15 seconds');
-    const categorised = await categoriseVideos(videos, key);
+    setLoading(`Got ${videos.length} videos. Categorising with Gemini…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">This takes about 15 seconds</span>`);
 
+    const categorised = await categoriseVideos(videos, key);
     buildGallery(categorised, videos);
     showScreen('gallery');
 
   } catch(err) {
     showScreen('setup');
     showStatus('Error: ' + err.message, 'error');
+    showDebug('Debug: ' + err.message);
   }
 }
 
-function setLoading(main, sub) {
-  document.getElementById('loading-text').firstChild.textContent = main + ' ';
-  document.getElementById('loading-sub').textContent = sub || '';
-}
-
-// ── Watch Later ───────────────────────────────────────────────────────────
+// ── Fetch Watch Later ─────────────────────────────────────────────────────
 async function fetchWatchLater() {
   const res = await fetch(
     'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=WL&maxResults=25',
     { headers: { Authorization: 'Bearer ' + accessToken } }
   );
 
+  const data = await res.json();
+
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || 'Failed to fetch Watch Later. Make sure YouTube is connected.');
+    throw new Error(data.error?.message || `YouTube API error ${res.status}`);
   }
 
-  const data   = await res.json();
   const videos = [];
-
   for (const item of (data.items || [])) {
     const s     = item.snippet;
     const vidId = s?.resourceId?.videoId;
@@ -403,48 +418,42 @@ async function fetchWatchLater() {
 
     const thumbs = s.thumbnails || {};
     const thumb  = (thumbs.maxres || thumbs.high || thumbs.medium || thumbs.default || {}).url
-                 || `https://img.youtube.com/vi/${vidId}/hqdefault.jpg`;
+                || `https://img.youtube.com/vi/${vidId}/hqdefault.jpg`;
 
     videos.push({
-      id:          vidId,
-      title:       (s.title || 'Untitled').replace(/&amp;/g,'&').replace(/&#39;/g,"'"),
-      channel:     s.videoOwnerChannelTitle || 'Unknown Channel',
-      thumbnail:   thumb,
-      description: (s.description || '').substring(0, 200),
-      url:         `https://www.youtube.com/watch?v=${vidId}`,
+      id:        vidId,
+      title:     (s.title || 'Untitled').replace(/&amp;/g,'&').replace(/&#39;/g,"'"),
+      channel:   s.videoOwnerChannelTitle || 'Unknown Channel',
+      thumbnail: thumb,
+      url:       `https://www.youtube.com/watch?v=${vidId}`,
     });
   }
-
   return videos;
 }
 
 // ── Categorise ────────────────────────────────────────────────────────────
 async function categoriseVideos(videos, geminiKey) {
-  const list = videos.map((v, i) => `${i+1}. "${v.title}" by ${v.channel}`).join('\n');
-
-  const prompt = `You are organising a YouTube Watch Later playlist into focus categories.
+  const list   = videos.map((v, i) => `${i+1}. "${v.title}" by ${v.channel}`).join('\n');
+  const prompt = `Organise this YouTube Watch Later playlist into 4-6 natural focus categories.
 
 Videos:
 ${list}
 
-Instructions:
-1. Look at all titles and channels
-2. Identify 4-6 natural categories that emerge from THIS specific list
-3. Assign each video to exactly one category
-4. Videos that don't fit go in "Random"
+Rules:
+- Derive categories from what's actually in the list, don't use preset ones
+- Assign each video to exactly one category
+- Videos that don't fit anywhere go in "Random"
+- Reply ONLY with valid JSON, no markdown, no explanation
 
-Reply ONLY with valid JSON, no markdown, no explanation:
+Format:
 {"categories":["Cat1","Cat2","Random"],"assignments":{"1":"Cat1","2":"Cat2"}}`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
     {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1 }
-      })
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } })
     }
   );
 
@@ -459,28 +468,24 @@ Reply ONLY with valid JSON, no markdown, no explanation:
 
   let parsed;
   try { parsed = JSON.parse(raw); }
-  catch(e) { throw new Error('Could not parse Gemini categories. Try again.'); }
+  catch(e) { throw new Error('Could not parse Gemini response. Please try again.'); }
 
   const result = {};
   for (const cat of (parsed.categories || [])) result[cat] = [];
-
   for (let i = 0; i < videos.length; i++) {
     const cat = parsed.assignments?.[String(i+1)] || 'Random';
     if (!result[cat]) result[cat] = [];
     result[cat].push(videos[i]);
   }
-
-  // Remove empty
   Object.keys(result).forEach(k => { if (!result[k].length) delete result[k]; });
-
   return result;
 }
 
 // ── Gallery ───────────────────────────────────────────────────────────────
 function buildGallery(categorised, allVideos) {
-  if (userProfile) {
+  if (userProfile?.picture) {
     document.getElementById('topbar-user').innerHTML =
-      `<div class="user-avatar">${userProfile.picture ? `<img src="${userProfile.picture}" alt="">` : ''}</div>`;
+      `<div class="user-avatar"><img src="${userProfile.picture}" alt=""></div>`;
   }
 
   let tabsHTML  = `<button class="tab active" data-cat="all" onclick="switchTab('all')">All<span class="tab-count">${allVideos.length}</span></button>`;
@@ -496,20 +501,14 @@ function buildGallery(categorised, allVideos) {
   document.getElementById('gallery-body').innerHTML = viewsHTML;
 }
 
-function slugify(str) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-}
+function slugify(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
 function videoCardHTML(v) {
   const safe = encodeURIComponent(JSON.stringify(v));
-  return `
-    <div class="video-card" onclick="openVideo('${safe}')">
-      <div class="vc-thumb"><img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.src='https://img.youtube.com/vi/${v.id}/hqdefault.jpg'"></div>
-      <div class="vc-body">
-        <div class="vc-channel">${v.channel}</div>
-        <div class="vc-title">${v.title}</div>
-      </div>
-    </div>`;
+  return `<div class="video-card" onclick="openVideo('${safe}')">
+    <div class="vc-thumb"><img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.src='https://img.youtube.com/vi/${v.id}/hqdefault.jpg'"></div>
+    <div class="vc-body"><div class="vc-channel">${v.channel}</div><div class="vc-title">${v.title}</div></div>
+  </div>`;
 }
 
 function switchTab(cat) {
@@ -523,26 +522,22 @@ function switchTab(cat) {
 function openVideo(vStr) {
   const v = JSON.parse(decodeURIComponent(vStr));
   currentVideo = v;
-
   document.getElementById('vt-title').textContent   = v.title;
   document.getElementById('vi-channel').textContent = v.channel;
   document.getElementById('vi-title').textContent   = v.title;
   document.getElementById('vi-yt-link').href        = v.url;
   document.getElementById('yt-player').src          = `https://www.youtube.com/embed/${v.id}?enablejsapi=1&rel=0`;
-
   const btn  = document.getElementById('summarise-btn');
   const body = document.getElementById('summary-body');
-
   if (summaryCache[v.id]) {
     renderSummary(summaryCache[v.id]);
     btn.disabled = true;
   } else {
     btn.disabled = false;
-    body.innerHTML = `<div class="summary-empty"><div class="summary-empty-icon">✦</div><div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video — in the anchor's own style.</div></div>`;
+    body.innerHTML = `<div class="summary-empty"><div class="summary-empty-icon">✦</div><div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video.</div></div>`;
   }
-
   showScreen('video');
-  window.scrollTo(0, 0);
+  window.scrollTo(0,0);
 }
 
 function goBack() {
@@ -556,58 +551,36 @@ async function summariseVideo() {
   const btn  = document.getElementById('summarise-btn');
   const body = document.getElementById('summary-body');
   const key  = localStorage.getItem('gemini_api_key');
-
   btn.disabled = true;
   body.innerHTML = `<div class="summary-loading"><div class="ring"></div><div class="summary-loading-text">Reading the video…</div></div>`;
 
-  const prompt = `Give me the summary of this video. Make sure all the important content is captured in depth, and all the filler conversations or random stuff is removed from it. Can you do some genuine shortlisting to just share the relevant aspects in the similar tone and language of the anchor, making it more concise.
-
-Include timestamps for key moments in this format: [2:34] so I can jump directly to those parts.`;
+  const prompt = `Give me the summary of this video. Make sure all the important content is captured in depth, and all the filler conversations or random stuff is removed from it. Can you do some genuine shortlisting to just share the relevant aspects in the similar tone and language of the anchor, making it more concise. Include timestamps for key moments in this format: [2:34]`;
 
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { file_data: { mime_type: 'video/youtube', file_uri: currentVideo.url } },
-              { text: prompt }
-            ]
-          }]
-        })
-      }
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{ parts:[
+          { file_data:{ mime_type:'video/youtube', file_uri:currentVideo.url } },
+          { text: prompt }
+        ]}]}) }
     );
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || `Error ${res.status}`);
-    }
-
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || res.status); }
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No summary returned.';
     summaryCache[currentVideo.id] = text;
     renderSummary(text);
-
   } catch(err) {
-    body.innerHTML = `<div class="summary-error"><strong>Could not generate summary</strong>${err.message}<br><br><span class="retry-link" onclick="document.getElementById('summarise-btn').disabled=false;summariseVideo()">Try again →</span></div>`;
+    body.innerHTML = `<div class="summary-error"><strong>Could not generate summary</strong>${err.message}<br><br><span class="retry-link" onclick="document.getElementById('summarise-btn').disabled=false;document.getElementById('summarise-btn').click()">Try again →</span></div>`;
     btn.disabled = false;
   }
 }
 
 function renderSummary(text) {
-  const body = document.getElementById('summary-body');
-
-  const withTs = text.replace(/\[(\d+:\d{2}(?::\d{2})?)\]/g, (m, ts) =>
-    `<span class="ts-chip" onclick="seekTo(${tsToSecs(ts)})">${ts}</span>`
-  );
-
-  const lines  = withTs.split('\n');
-  let   html   = '<div class="summary-content">';
-  let   inList = false;
-
+  const withTs = text.replace(/\[(\d+:\d{2}(?::\d{2})?)\]/g,
+    (m,ts) => `<span class="ts-chip" onclick="seekTo(${tsToSecs(ts)})">${ts}</span>`);
+  const lines = withTs.split('\n');
+  let html = '<div class="summary-content">', inList = false;
   for (let line of lines) {
     line = line.trim();
     if (!line) { if (inList) { html += '</ul>'; inList = false; } continue; }
@@ -624,23 +597,15 @@ function renderSummary(text) {
   }
   if (inList) html += '</ul>';
   html += '</div>';
-  body.innerHTML = html;
+  document.getElementById('summary-body').innerHTML = html;
 }
 
-function tsToSecs(ts) {
-  return ts.split(':').map(Number).reverse().reduce((acc,v,i) => acc + v * Math.pow(60,i), 0);
+function tsToSecs(ts) { return ts.split(':').map(Number).reverse().reduce((a,v,i) => a + v * Math.pow(60,i), 0); }
+function seekTo(s) {
+  document.getElementById('yt-player').contentWindow?.postMessage(JSON.stringify({event:'command',func:'seekTo',args:[s,true]}),'*');
+  document.getElementById('yt-player').scrollIntoView({behavior:'smooth',block:'start'});
 }
-
-function seekTo(secs) {
-  document.getElementById('yt-player').contentWindow?.postMessage(
-    JSON.stringify({ event:'command', func:'seekTo', args:[secs,true] }), '*'
-  );
-  document.getElementById('yt-player').scrollIntoView({ behavior:'smooth', block:'start' });
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('screen-video').classList.contains('active')) goBack();
-});
+document.addEventListener('keydown', e => { if (e.key==='Escape' && document.getElementById('screen-video').classList.contains('active')) goBack(); });
 </script>
 </body>
 </html>
