@@ -74,7 +74,9 @@ h1 em { font-style:italic; color:var(--text-soft); }
 .tab.active { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
 .tab-count { font-size:10px; color:var(--text-soft); background:var(--surface); padding:1px 6px; border-radius:10px; margin-left:4px; }
 .tab.active .tab-count { background:var(--border); }
-.topbar-user { margin-left:auto; flex-shrink:0; }
+.topbar-right { margin-left:auto; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.refresh-btn { background:none; border:1px solid var(--border); color:var(--text-soft); font-family:var(--sans); font-size:11px; padding:4px 12px; border-radius:6px; cursor:pointer; transition:all 150ms; }
+.refresh-btn:hover { color:var(--text); border-color:#444; }
 .user-avatar { width:28px; height:28px; border-radius:50%; overflow:hidden; background:var(--border); }
 .user-avatar img { width:100%; height:100%; object-fit:cover; }
 .gallery-body { max-width:1200px; margin:0 auto; padding:32px 32px 80px; }
@@ -150,7 +152,7 @@ h1 em { font-style:italic; color:var(--text-soft); }
       <span class="logo-text">Project YouTube</span>
     </div>
     <h1>Your feed,<br><em>your focus.</em></h1>
-    <p class="setup-sub">Watch Later — organised by mood. No algorithm, no distraction. Just the content you actually want to watch, sorted into categories you care about.</p>
+    <p class="setup-sub">Your "Must Watch Again" playlist — organised by mood. No algorithm, no distraction.</p>
 
     <div class="setup-card">
       <div class="step-label">Step 1 — Connect YouTube</div>
@@ -169,7 +171,7 @@ h1 em { font-style:italic; color:var(--text-soft); }
     </div>
 
     <button class="btn btn-primary" id="start-btn" onclick="startApp()" disabled>
-      Load my Watch Later →
+      Load my playlist →
     </button>
 
     <div class="status-msg" id="status-msg"></div>
@@ -191,7 +193,10 @@ h1 em { font-style:italic; color:var(--text-soft); }
       <span class="topbar-logo-name">Project YouTube</span>
     </div>
     <div class="tabs-wrap" id="tabs-wrap"></div>
-    <div class="topbar-user" id="topbar-user"></div>
+    <div class="topbar-right">
+      <button class="refresh-btn" onclick="refreshPlaylist()">↻ Refresh</button>
+      <div id="topbar-user"></div>
+    </div>
   </div>
   <div class="gallery-body" id="gallery-body"></div>
 </div>
@@ -221,7 +226,7 @@ h1 em { font-style:italic; color:var(--text-soft); }
       <div class="summary-body" id="summary-body">
         <div class="summary-empty">
           <div class="summary-empty-icon">✦</div>
-          <div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video — in the anchor's own style.</div>
+          <div class="summary-empty-text">Click <strong>Summarise</strong> to get a focused breakdown of this video.</div>
         </div>
       </div>
     </div>
@@ -229,19 +234,21 @@ h1 em { font-style:italic; color:var(--text-soft); }
 </div>
 
 <script>
-// ── CONFIG — replace with your Web application Client ID ─────────────────
-const GOOGLE_CLIENT_ID = '600597148935-9fr1n3j9om32j4ui72k2iaiciiu4oafk.apps.googleusercontent.com';
+// ── IMPORTANT: Replace with your Web application OAuth Client ID ──────────
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com';
+// ── Playlist ID — your "Must Watch Again" playlist ────────────────────────
+const PLAYLIST_ID = 'PLdgObwAmok7kzkx4DDdG5Y6JtNV9Z9NVY';
 // ─────────────────────────────────────────────────────────────────────────
 
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const SCOPES       = 'https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/userinfo.profile';
+const SCOPES       = 'https://www.googleapis.com/auth/youtube.readonly';
 
 let accessToken  = null;
 let userProfile  = null;
 let currentVideo = null;
 let summaryCache = {};
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Screens ───────────────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + id).classList.add('active');
@@ -263,7 +270,7 @@ function setLoading(msg) {
   document.getElementById('loading-text').innerHTML = msg;
 }
 
-// ── Token handling ────────────────────────────────────────────────────────
+// ── Token ─────────────────────────────────────────────────────────────────
 function saveToken(token) {
   accessToken = token;
   localStorage.setItem('yt_token', token);
@@ -273,7 +280,6 @@ function saveToken(token) {
 function loadToken() {
   const token = localStorage.getItem('yt_token');
   const time  = parseInt(localStorage.getItem('yt_token_time') || '0');
-  // Tokens expire after 1 hour (3600000ms)
   if (token && Date.now() - time < 3500000) {
     accessToken = token;
     return true;
@@ -286,51 +292,47 @@ function loadToken() {
 // ── OAuth ─────────────────────────────────────────────────────────────────
 function signInWithGoogle() {
   const params = new URLSearchParams({
-    client_id:     GOOGLE_CLIENT_ID,
-    redirect_uri:  REDIRECT_URI,
-    response_type: 'token',
-    scope:         SCOPES,
-    prompt:        'select_account',
+    client_id:              GOOGLE_CLIENT_ID,
+    redirect_uri:           REDIRECT_URI,
+    response_type:          'token',
+    scope:                  SCOPES,
+    prompt:                 'select_account',
     include_granted_scopes: 'true',
   });
   window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
 
-// ── Init — runs immediately when page loads ───────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────
 (function init() {
-  // 1. Check for OAuth token in URL hash FIRST (before anything clears it)
+  // Check for OAuth token in URL hash first
   const hash   = window.location.hash;
   const params = new URLSearchParams(hash.substring(1));
   const token  = params.get('access_token');
 
   if (token) {
     saveToken(token);
-    // Clean URL without reloading
     window.history.replaceState({}, document.title, window.location.pathname);
     setupSignedInState(token);
     return;
   }
 
-  // 2. Check for saved token
+  // Check for saved token
   if (loadToken()) {
     setupSignedInState(accessToken);
     return;
   }
 
-  // 3. No token — show sign in button, restore saved key
+  // No token — fresh setup
   const savedKey = localStorage.getItem('gemini_api_key');
   if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
   document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
 })();
 
 function setupSignedInState(token) {
-  // Restore saved Gemini key
   const savedKey = localStorage.getItem('gemini_api_key');
   if (savedKey) document.getElementById('gemini-key-input').value = savedKey;
-
   document.getElementById('gemini-key-input').addEventListener('input', checkStartReady);
 
-  // Show signed-in UI without profile pic (avoid the 401 on userinfo)
   document.getElementById('signin-area').innerHTML = `
     <div class="signed-in-row">
       <div class="signin-avatar">✓</div>
@@ -340,19 +342,18 @@ function setupSignedInState(token) {
 
   checkStartReady();
 
-  // Try to get profile in background (non-blocking)
+  // Try profile in background
   fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { Authorization: 'Bearer ' + token }
-  }).then(r => r.ok ? r.json() : null).then(profile => {
-    if (profile && profile.name) {
-      userProfile = profile;
-      document.getElementById('signin-area').innerHTML = `
-        <div class="signed-in-row">
-          <div class="signin-avatar">${profile.picture ? `<img src="${profile.picture}" alt="">` : '✓'}</div>
-          <span class="signin-name">${profile.name}</span>
-          <span class="signin-check">✓</span>
-        </div>`;
-    }
+  }).then(r => r.ok ? r.json() : null).then(p => {
+    if (!p) return;
+    userProfile = p;
+    document.getElementById('signin-area').innerHTML = `
+      <div class="signed-in-row">
+        <div class="signin-avatar">${p.picture ? `<img src="${p.picture}" alt="">` : '✓'}</div>
+        <span class="signin-name">${p.name || 'Connected'}</span>
+        <span class="signin-check">✓</span>
+      </div>`;
   }).catch(() => {});
 }
 
@@ -361,29 +362,36 @@ function checkStartReady() {
   document.getElementById('start-btn').disabled = !(accessToken && key.length > 10);
 }
 
-// ── Start App ─────────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────────────
 async function startApp() {
   const key = document.getElementById('gemini-key-input').value.trim();
   if (!key || !accessToken) {
     showStatus('Please sign in with Google and enter your Gemini API key.', 'error');
     return;
   }
-
   localStorage.setItem('gemini_api_key', key);
   showScreen('loading');
+  await loadPlaylist();
+}
 
+async function refreshPlaylist() {
+  showScreen('loading');
+  await loadPlaylist();
+}
+
+async function loadPlaylist() {
   try {
-    setLoading('Fetching your Watch Later playlist…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">Getting last 25 videos</span>');
+    setLoading('Fetching your "Must Watch Again" playlist…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">Getting last 25 videos</span>');
 
-    const videos = await fetchWatchLater();
+    const videos = await fetchPlaylist();
 
     if (!videos.length) {
       showScreen('setup');
-      showStatus('No videos found in Watch Later. Make sure your Watch Later playlist has videos on YouTube.', 'error');
-      showDebug('Token: ' + (accessToken ? accessToken.substring(0,20) + '...' : 'none'));
+      showStatus('No videos found in your "Must Watch Again" playlist. Add some videos to it on YouTube first.', 'error');
       return;
     }
 
+    const key = localStorage.getItem('gemini_api_key');
     setLoading(`Got ${videos.length} videos. Categorising with Gemini…<br><span style="font-size:11px;color:#444;margin-top:4px;display:block">This takes about 15 seconds</span>`);
 
     const categorised = await categoriseVideos(videos, key);
@@ -397,17 +405,24 @@ async function startApp() {
   }
 }
 
-// ── Fetch Watch Later ─────────────────────────────────────────────────────
-async function fetchWatchLater() {
+// ── Fetch Playlist ────────────────────────────────────────────────────────
+async function fetchPlaylist() {
   const res = await fetch(
-    'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=WL&maxResults=25',
+    `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${PLAYLIST_ID}&maxResults=25`,
     { headers: { Authorization: 'Bearer ' + accessToken } }
   );
 
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.error?.message || `YouTube API error ${res.status}`);
+    const msg = data.error?.message || `YouTube API error ${res.status}`;
+    // Token expired — clear and ask to re-login
+    if (res.status === 401) {
+      localStorage.removeItem('yt_token');
+      localStorage.removeItem('yt_token_time');
+      throw new Error('Session expired. Please sign in again.');
+    }
+    throw new Error(msg);
   }
 
   const videos = [];
@@ -422,7 +437,7 @@ async function fetchWatchLater() {
 
     videos.push({
       id:        vidId,
-      title:     (s.title || 'Untitled').replace(/&amp;/g,'&').replace(/&#39;/g,"'"),
+      title:     (s.title || 'Untitled').replace(/&amp;/g,'&').replace(/&#39;/g,"'").replace(/&quot;/g,'"'),
       channel:   s.videoOwnerChannelTitle || 'Unknown Channel',
       thumbnail: thumb,
       url:       `https://www.youtube.com/watch?v=${vidId}`,
@@ -434,16 +449,16 @@ async function fetchWatchLater() {
 // ── Categorise ────────────────────────────────────────────────────────────
 async function categoriseVideos(videos, geminiKey) {
   const list   = videos.map((v, i) => `${i+1}. "${v.title}" by ${v.channel}`).join('\n');
-  const prompt = `Organise this YouTube Watch Later playlist into 4-6 natural focus categories.
+  const prompt = `Organise this YouTube playlist into 4-6 natural focus categories.
 
 Videos:
 ${list}
 
 Rules:
-- Derive categories from what's actually in the list, don't use preset ones
+- Derive categories from what's actually in the list — don't use preset ones
 - Assign each video to exactly one category
 - Videos that don't fit anywhere go in "Random"
-- Reply ONLY with valid JSON, no markdown, no explanation
+- Reply ONLY with valid JSON, no markdown, no extra text
 
 Format:
 {"categories":["Cat1","Cat2","Random"],"assignments":{"1":"Cat1","2":"Cat2"}}`;
@@ -453,7 +468,7 @@ Format:
     {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.1 } })
+      body:    JSON.stringify({ contents:[{ parts:[{ text: prompt }] }], generationConfig:{ temperature:0.1 } })
     }
   );
 
@@ -489,12 +504,24 @@ function buildGallery(categorised, allVideos) {
   }
 
   let tabsHTML  = `<button class="tab active" data-cat="all" onclick="switchTab('all')">All<span class="tab-count">${allVideos.length}</span></button>`;
-  let viewsHTML = `<div class="category-view active" id="cat-all"><div class="category-header"><div class="category-title">All Videos</div><div class="category-subtitle">${allVideos.length} videos in your Watch Later</div></div><div class="video-grid">${allVideos.map(videoCardHTML).join('')}</div></div>`;
+  let viewsHTML = `<div class="category-view active" id="cat-all">
+    <div class="category-header">
+      <div class="category-title">Must Watch Again</div>
+      <div class="category-subtitle">${allVideos.length} videos · categorised by Gemini</div>
+    </div>
+    <div class="video-grid">${allVideos.map(videoCardHTML).join('')}</div>
+  </div>`;
 
   for (const [cat, videos] of Object.entries(categorised)) {
     const slug = slugify(cat);
     tabsHTML  += `<button class="tab" data-cat="${slug}" onclick="switchTab('${slug}')">${cat}<span class="tab-count">${videos.length}</span></button>`;
-    viewsHTML += `<div class="category-view" id="cat-${slug}"><div class="category-header"><div class="category-title">${cat}</div><div class="category-subtitle">${videos.length} video${videos.length!==1?'s':''}</div></div><div class="video-grid">${videos.map(videoCardHTML).join('')}</div></div>`;
+    viewsHTML += `<div class="category-view" id="cat-${slug}">
+      <div class="category-header">
+        <div class="category-title">${cat}</div>
+        <div class="category-subtitle">${videos.length} video${videos.length!==1?'s':''}</div>
+      </div>
+      <div class="video-grid">${videos.map(videoCardHTML).join('')}</div>
+    </div>`;
   }
 
   document.getElementById('tabs-wrap').innerHTML    = tabsHTML;
@@ -507,7 +534,10 @@ function videoCardHTML(v) {
   const safe = encodeURIComponent(JSON.stringify(v));
   return `<div class="video-card" onclick="openVideo('${safe}')">
     <div class="vc-thumb"><img src="${v.thumbnail}" alt="" loading="lazy" onerror="this.src='https://img.youtube.com/vi/${v.id}/hqdefault.jpg'"></div>
-    <div class="vc-body"><div class="vc-channel">${v.channel}</div><div class="vc-title">${v.title}</div></div>
+    <div class="vc-body">
+      <div class="vc-channel">${v.channel}</div>
+      <div class="vc-title">${v.title}</div>
+    </div>
   </div>`;
 }
 
@@ -527,8 +557,10 @@ function openVideo(vStr) {
   document.getElementById('vi-title').textContent   = v.title;
   document.getElementById('vi-yt-link').href        = v.url;
   document.getElementById('yt-player').src          = `https://www.youtube.com/embed/${v.id}?enablejsapi=1&rel=0`;
+
   const btn  = document.getElementById('summarise-btn');
   const body = document.getElementById('summary-body');
+
   if (summaryCache[v.id]) {
     renderSummary(summaryCache[v.id]);
     btn.disabled = true;
@@ -571,7 +603,7 @@ async function summariseVideo() {
     summaryCache[currentVideo.id] = text;
     renderSummary(text);
   } catch(err) {
-    body.innerHTML = `<div class="summary-error"><strong>Could not generate summary</strong>${err.message}<br><br><span class="retry-link" onclick="document.getElementById('summarise-btn').disabled=false;document.getElementById('summarise-btn').click()">Try again →</span></div>`;
+    body.innerHTML = `<div class="summary-error"><strong>Could not generate summary</strong>${err.message}<br><br><span class="retry-link" onclick="document.getElementById('summarise-btn').disabled=false;summariseVideo()">Try again →</span></div>`;
     btn.disabled = false;
   }
 }
@@ -601,11 +633,17 @@ function renderSummary(text) {
 }
 
 function tsToSecs(ts) { return ts.split(':').map(Number).reverse().reduce((a,v,i) => a + v * Math.pow(60,i), 0); }
+
 function seekTo(s) {
-  document.getElementById('yt-player').contentWindow?.postMessage(JSON.stringify({event:'command',func:'seekTo',args:[s,true]}),'*');
+  document.getElementById('yt-player').contentWindow?.postMessage(
+    JSON.stringify({event:'command',func:'seekTo',args:[s,true]}), '*'
+  );
   document.getElementById('yt-player').scrollIntoView({behavior:'smooth',block:'start'});
 }
-document.addEventListener('keydown', e => { if (e.key==='Escape' && document.getElementById('screen-video').classList.contains('active')) goBack(); });
+
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape' && document.getElementById('screen-video').classList.contains('active')) goBack();
+});
 </script>
 </body>
 </html>
